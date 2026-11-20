@@ -1,2 +1,2 @@
 # Mygit
-Customized Git with C++
+Customized Git with Cpp
