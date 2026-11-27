@@ -1,12 +1,11 @@
-
 #include "CommandParser.h"
 
 #include <iostream>
 #include <cctype>
 
 // Constructor
-CommandParser::CommandParser(FileSystem &fs)
-    : fileSystem(fs), running(true)
+CommandParser::CommandParser(FileSystem &fs, Repository &repo)
+    : fileSystem(fs), repository(repo), running(true)
 {
 }
 
@@ -15,12 +14,9 @@ std::vector<std::string> CommandParser::tokenize(
     const std::string &line) const
 {
     std::vector<std::string> tokens;
-
     std::string currentToken;
-
     bool insideQuotes = false;
     bool tokenStarted = false;
-
     char quoteType = '\0';
 
     for (std::size_t i = 0; i < line.size(); i++)
@@ -57,7 +53,6 @@ std::vector<std::string> CommandParser::tokenize(
             if (tokenStarted)
             {
                 tokens.push_back(currentToken);
-
                 currentToken.clear();
                 tokenStarted = false;
             }
@@ -71,7 +66,6 @@ std::vector<std::string> CommandParser::tokenize(
             if (tokenStarted)
             {
                 tokens.push_back(currentToken);
-
                 currentToken.clear();
                 tokenStarted = false;
             }
@@ -108,6 +102,123 @@ std::vector<std::string> CommandParser::tokenize(
     return tokens;
 }
 
+// Execute Git commands
+void CommandParser::executeGitCommand(
+    const std::vector<std::string> &tokens)
+{
+    if (tokens.size() < 2)
+    {
+        throw std::string(
+            "Usage: git <config|init|add|reset|commit|status|log>");
+    }
+
+    const std::string &subcommand = tokens[1];
+
+    // git config user.name "<USERNAME>"
+    // git config user.email "<EMAIL>"
+    if (subcommand == "config")
+    {
+        if (tokens.size() != 4)
+        {
+            throw std::string(
+                "Usage: git config user.name \"<USERNAME>\" or "
+                "git config user.email \"<EMAIL>\"");
+        }
+
+        if (tokens[2] == "user.name")
+        {
+            repository.setUserName(tokens[3]);
+        }
+        else if (tokens[2] == "user.email")
+        {
+            repository.setUserEmail(tokens[3]);
+        }
+        else
+        {
+            throw std::string(
+                "Unknown config key: ") + tokens[2];
+        }
+    }
+
+    // git init
+    else if (subcommand == "init")
+    {
+        if (tokens.size() != 2)
+        {
+            throw std::string("Usage: git init");
+        }
+
+        repository.init();
+    }
+
+    // git add <FILE_NAME> | git add .
+    else if (subcommand == "add")
+    {
+        if (tokens.size() != 3)
+        {
+            throw std::string("Usage: git add <FILE_NAME> or git add .");
+        }
+
+        if (tokens[2] == ".")
+        {
+            repository.addAll();
+        }
+        else
+        {
+            repository.add(tokens[2]);
+        }
+    }
+
+    // git reset <FILE_NAME>
+    else if (subcommand == "reset")
+    {
+        if (tokens.size() != 3)
+        {
+            throw std::string("Usage: git reset <FILE_NAME>");
+        }
+
+        repository.reset(tokens[2]);
+    }
+
+    // git commit -m "<MESSAGE>"
+    else if (subcommand == "commit")
+    {
+        if (tokens.size() != 4 || tokens[2] != "-m")
+        {
+            throw std::string(
+                "Usage: git commit -m \"<MESSAGE>\"");
+        }
+
+        repository.commit(tokens[3]);
+    }
+
+    // git status
+    else if (subcommand == "status")
+    {
+        if (tokens.size() != 2)
+        {
+            throw std::string("Usage: git status");
+        }
+
+        repository.status();
+    }
+
+    // git log
+    else if (subcommand == "log")
+    {
+        if (tokens.size() != 2)
+        {
+            throw std::string("Usage: git log");
+        }
+
+        repository.log();
+    }
+    else
+    {
+        throw std::string("Unknown git command: ") + subcommand;
+    }
+}
+
 // Execute Shell commands
 void CommandParser::executeShellCommand(
     const std::vector<std::string> &tokens)
@@ -119,8 +230,14 @@ void CommandParser::executeShellCommand(
 
     const std::string &command = tokens[0];
 
+    // Git commands
+    if (command == "git")
+    {
+        executeGitCommand(tokens);
+    }
+
     // pwd
-    if (command == "pwd")
+    else if (command == "pwd")
     {
         if (tokens.size() != 1)
         {
@@ -215,8 +332,7 @@ void CommandParser::executeShellCommand(
             throw std::string("Usage: cat <FILE_NAME>");
         }
 
-        std::vector<std::string> lines =
-            fileSystem.cat(tokens[1]);
+        std::vector<std::string> lines = fileSystem.cat(tokens[1]);
 
         for (std::size_t i = 0; i < lines.size(); i++)
         {
